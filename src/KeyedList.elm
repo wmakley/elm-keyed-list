@@ -8,16 +8,33 @@ module KeyedList
         , toList
         , mapToList
         , mapToHTML
+        , mapToTableBody
         , map
         , update
         , remove
         , sortBy
         )
 
-{-| Implements some Dict functions on top of a list,
-that are useful for building tabular UI's.
+{-| Implements some Dict functions on top of a list.
+Useful for building UI's of collections
+of elements that can be updated individually and
+added, removed, or reordered. This is implemented
+using UID's, NOT the position of each element, so
+messages always go to the right place even if the list
+is reordered.
 
-Slow, but if I also use a Dict I get the worst of both worlds.
+Unfortunately there is no one Elm data structure that
+can handle this efficiently, but at least List is
+okay at iteration and mapping, and plays well with Html.
+
+Array: Great at updating individual elements, hilariously
+inefficient to map to HTML. Also, uses position-based
+keys.
+
+Dict: Would be perfect, but it doesn't preserve order.
+
+Combining any of these wouldn't make sense, because you
+just get the worst of both worlds!
 
 -}
 
@@ -47,6 +64,10 @@ empty =
     }
 
 
+length { orderedItems } =
+    List.length orderedItems
+
+
 {-| Get a UID for an item, and return the list with incremented UID.
 -}
 genUID : KeyedList a -> ( UID, KeyedList a )
@@ -54,15 +75,13 @@ genUID ({ nextUID } as list) =
     ( list.nextUID, { list | nextUID = nextUID + 1 } )
 
 
-appendItem : a -> KeyedList a -> ( KeyedList a, UID )
+appendItem : a -> KeyedList a -> KeyedList a
 appendItem item ({ orderedItems } as list) =
     let
         ( uid, list_ ) =
             genUID list
     in
-        ( { list_ | orderedItems = List.append orderedItems [ wrap uid item ] }
-        , uid
-        )
+        { list_ | orderedItems = List.append orderedItems [ wrap uid item ] }
 
 
 {-| Wrap an item with its UID.
@@ -99,6 +118,23 @@ mapToHTML func tagName attributes { orderedItems } =
                 orderedItems
     in
         Html.Keyed.node tagName attributes nodes
+
+
+mapToTableBody : (UID -> a -> Html.Html msg) -> List (Html.Attribute msg) -> KeyedList a -> Html.Html msg
+mapToTableBody func attributes list =
+    mapToHTML func "tbody" attributes list
+
+
+
+-- let
+--     rows =
+--         List.map
+--             (\( uid, item ) ->
+--                 ( toString uid, func uid item )
+--             )
+--             orderedItems
+-- in
+--     Html.Keyed.node "tbody" attributes rows
 
 
 map : (UID -> a -> b) -> KeyedList a -> KeyedList b
