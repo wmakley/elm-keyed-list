@@ -6,7 +6,6 @@ module KeyedList
         , empty
         , appendItem
         , toList
-        , mapToList
         , mapToHTML
         , mapToTableBody
         , map
@@ -64,11 +63,12 @@ empty =
     }
 
 
+length : KeyedList a -> Int
 length { orderedItems } =
     List.length orderedItems
 
 
-{-| Get a UID for an item, and return the list with incremented UID.
+{-| Get a UID for an item, and return the list with incremented nextUID.
 -}
 genUID : KeyedList a -> ( UID, KeyedList a )
 genUID ({ nextUID } as list) =
@@ -91,18 +91,19 @@ wrap uid item =
     ( uid, item )
 
 
+{-| Return the internal list of keyed items.
+Is just accessing a record member, so should be pretty fast.
+-}
 toList : KeyedList a -> List (KeyedElement a)
-toList keyedList =
-    keyedList.orderedItems
+toList { orderedItems } =
+    orderedItems
 
 
-mapToList : (UID -> a -> b) -> KeyedList a -> List b
-mapToList func keyedList =
-    List.map
-        (\( uid, item ) ->
-            func uid item
-        )
-        keyedList.orderedItems
+{-| Get the list of items without their UID
+-}
+values : KeyedList a -> List a
+values { orderedItems } =
+    List.map Tuple.second orderedItems
 
 
 {-| Shortcut for common use case. Uses Html.Keyed.
@@ -120,21 +121,11 @@ mapToHTML func tagName attributes { orderedItems } =
         Html.Keyed.node tagName attributes nodes
 
 
+{-| func should return an entire table row (tr) tag
+-}
 mapToTableBody : (UID -> a -> Html.Html msg) -> List (Html.Attribute msg) -> KeyedList a -> Html.Html msg
 mapToTableBody func attributes list =
     mapToHTML func "tbody" attributes list
-
-
-
--- let
---     rows =
---         List.map
---             (\( uid, item ) ->
---                 ( toString uid, func uid item )
---             )
---             orderedItems
--- in
---     Html.Keyed.node "tbody" attributes rows
 
 
 map : (UID -> a -> b) -> KeyedList a -> KeyedList b
@@ -149,6 +140,9 @@ map func ({ orderedItems } as keyedList) =
     }
 
 
+{-| Update an invidual element by its UID. Does nothing if UID
+does not exist.
+-}
 update : UID -> (a -> a) -> KeyedList a -> KeyedList a
 update uid func ({ orderedItems } as keyedList) =
     { keyedList
@@ -164,6 +158,32 @@ update uid func ({ orderedItems } as keyedList) =
     }
 
 
+{-| Replace an element in the list. Does nothing if not found.
+-}
+set : UID -> a -> KeyedList a -> KeyedList a
+set uid elt keyedList =
+    update uid (\_ -> elt) keyedList
+
+
+{-| Get an element in the list by its UID. Try not to use with set or update,
+because all of these operations iterate over the entire list.
+-}
+get : UID -> KeyedList a -> Maybe a
+get uid { orderedItems } =
+    orderedItems
+        |> List.filterMap
+            (\( uid_, elt ) ->
+                if uid_ == uid then
+                    Just elt
+                else
+                    Nothing
+            )
+        |> List.head
+
+
+{-| Remove an element from the list by its UID. Does nothing
+if no element has the UID.
+-}
 remove : UID -> KeyedList a -> KeyedList a
 remove uid ({ orderedItems } as keyedList) =
     { keyedList
