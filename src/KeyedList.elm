@@ -2,6 +2,7 @@ module KeyedList
     exposing
         ( KeyedList
         , UID
+        , uidToString
         , empty
         , fromList
         , toList
@@ -99,16 +100,28 @@ import Html
 import Html.Keyed
 
 
+{-| Represents a KeyedList. Stores the next UID,
+and the internal List of ( UID, element ) tuples.
+-}
 type alias KeyedList a =
     { nextUID : UID
     , orderedItems : List (KeyedElement a)
     }
 
 
+{-| Treat as black box, may change in future.
+-}
 type alias UID =
     Int
 
 
+uidToString : UID -> String
+uidToString uid =
+    toString uid
+
+
+{-| Just a Tuple of a UID and the element.
+-}
 type alias KeyedElement a =
     ( UID, a )
 
@@ -227,7 +240,7 @@ mapToHTML func tagName attributes { orderedItems } =
         nodes =
             List.map
                 (\( uid, item ) ->
-                    ( toString uid, func uid item )
+                    ( uidToString uid, func uid item )
                 )
                 orderedItems
     in
