@@ -1,17 +1,25 @@
 module KeyedList
     exposing
         ( KeyedList
-        , KeyedElement
         , UID
         , empty
-        , appendItem
+        , fromList
         , toList
+        , values
+        , unzip
+        , length
+        , update
+        , set
+        , get
+        , remove
+        , filter
+        , appendItem
+        , prependItem
         , mapToHTML
         , mapToTableBody
         , map
-        , update
-        , remove
         , sortBy
+        , sortByUID
         )
 
 {-| Implements some Dict functions on top of a list.
@@ -26,14 +34,63 @@ Unfortunately there is no one Elm data structure that
 can handle this efficiently, but at least List is
 okay at iteration and mapping, and plays well with Html.
 
-Array: Great at updating individual elements, hilariously
+
+## List Operations
+
+Many have been provided, but toList should be quite fast, so
+just use that if you don't need to modify the KeyedList!
+
+
+## Alternative Implementations Considered
+
+**Array:** Great at updating individual elements,
 inefficient to map to HTML. Also, uses position-based
 keys.
 
-Dict: Would be perfect, but it doesn't preserve order.
+**Dict:** Would be perfect, but it doesn't preserve order.
 
-Combining any of these wouldn't make sense, because you
+Combining these wouldn't make sense, because you
 just get the worst of both worlds!
+
+
+# Types
+
+@docs KeyedList, UID
+
+
+# Initialization
+
+@docs empty, fromList
+
+
+# Conversions
+
+@docs toList, values, unzip
+
+
+# Updating elements by UID
+
+@docs update, set, get
+
+
+# Adding and removing items
+
+@docs appendItem, remove, prependItem, filter
+
+
+# Building UIs
+
+@docs mapToHTML, mapToTableBody
+
+
+# Sorting
+
+@docs sortBy, sortByUID
+
+
+# Other List functions
+
+@docs length, append, map
 
 -}
 
@@ -63,6 +120,18 @@ empty =
     }
 
 
+fromList : List a -> KeyedList a
+fromList list =
+    { nextUID = (List.length list) + 1
+    , orderedItems =
+        List.indexedMap
+            (\index elt ->
+                wrap (index + 1) elt
+            )
+            list
+    }
+
+
 length : KeyedList a -> Int
 length { orderedItems } =
     List.length orderedItems
@@ -75,6 +144,38 @@ genUID ({ nextUID } as list) =
     ( list.nextUID, { list | nextUID = nextUID + 1 } )
 
 
+{-| Put two KeyedLists together, much in the manner of List.append
+-}
+append : KeyedList a -> KeyedList a -> KeyedList a
+append a b =
+    let
+        newList =
+            List.append a.orderedItems b.orderedItems
+    in
+        { nextUID = calculateNextUID newList
+        , orderedItems = newList
+        }
+
+
+{-| Recalculate the next UID if you don't have it any more.
+-}
+calculateNextUID : List (KeyedElement a) -> UID
+calculateNextUID list =
+    List.foldl
+        (\( uid, _ ) nextUID ->
+            if uid >= nextUID then
+                uid + 1
+            else
+                nextUID
+        )
+        1
+        list
+
+
+{-| Add a single item to the end of the list. Deliberately
+not named the same as List.append, because it works differently.
+Slow, use prependItem if you can.
+-}
 appendItem : a -> KeyedList a -> KeyedList a
 appendItem item ({ orderedItems } as list) =
     let
@@ -82,6 +183,18 @@ appendItem item ({ orderedItems } as list) =
             genUID list
     in
         { list_ | orderedItems = List.append orderedItems [ wrap uid item ] }
+
+
+{-| Use this if you can, e.g. if the item goes at the top anyway,
+or you are going to sort the KeyedList after adding it.
+-}
+prependItem : a -> KeyedList a -> KeyedList a
+prependItem item ({ orderedItems } as list) =
+    let
+        ( uid, list_ ) =
+            genUID list
+    in
+        { list_ | orderedItems = (wrap uid item) :: orderedItems }
 
 
 {-| Wrap an item with its UID.
@@ -194,6 +307,16 @@ remove uid ({ orderedItems } as keyedList) =
     }
 
 
+filter : (UID -> a -> Bool) -> KeyedList a -> KeyedList a
+filter func ({ orderedItems } as keyedList) =
+    { keyedList
+        | orderedItems =
+            List.filter
+                (\( uid, item ) -> func uid item)
+                orderedItems
+    }
+
+
 {-| Re-implementation of List.sortBy
 -}
 sortBy : (UID -> a -> comparable) -> KeyedList a -> KeyedList a
@@ -206,6 +329,8 @@ sortBy func ({ orderedItems } as keyedList) =
     }
 
 
+{-| Convenience function to sort by UID
+-}
 sortByUID : KeyedList a -> KeyedList a
 sortByUID ({ orderedItems } as keyedList) =
     { keyedList | orderedItems = List.sortBy Tuple.first orderedItems }
