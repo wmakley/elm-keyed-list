@@ -9,6 +9,7 @@ module KeyedList
         , values
         , unzip
         , length
+        , isEmpty
         , update
         , set
         , get
@@ -91,7 +92,7 @@ just get the worst of both worlds!
 
 # Other List functions
 
-@docs length, append, map
+@docs length, isEmpty, append, map
 
 -}
 
@@ -150,6 +151,11 @@ length { orderedItems } =
     List.length orderedItems
 
 
+isEmpty : KeyedList a -> Bool
+isEmpty { orderedItems } =
+    List.isEmpty orderedItems
+
+
 {-| Get a UID for an item, and return the list with incremented nextUID.
 -}
 genUID : KeyedList a -> ( UID, KeyedList a )
@@ -189,13 +195,15 @@ calculateNextUID list =
 not named the same as List.append, because it works differently.
 Slow, use prependItem if you can.
 -}
-appendItem : a -> KeyedList a -> KeyedList a
+appendItem : a -> KeyedList a -> ( KeyedList a, UID )
 appendItem item ({ orderedItems } as list) =
     let
         ( uid, list_ ) =
             genUID list
     in
-        { list_ | orderedItems = List.append orderedItems [ wrap uid item ] }
+        ( { list_ | orderedItems = List.append orderedItems [ wrap uid item ] }
+        , uid
+        )
 
 
 {-| Use this if you can, e.g. if the item goes at the top anyway,
