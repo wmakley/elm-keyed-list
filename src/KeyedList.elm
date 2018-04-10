@@ -302,10 +302,10 @@ updateWithCommand uid func ({ orderedItems } as keyedList) =
                     (\(( uid_, item ) as elt) ->
                         if uid_ == uid then
                             let
-                                ( item_, cmd ) =
+                                ( updatedItem, cmd ) =
                                     func item
                             in
-                                ( ( uid_, item ), cmd )
+                                ( ( uid_, updatedItem ), cmd )
                         else
                             ( ( uid_, item ), Cmd.none )
                     )
