@@ -11,6 +11,7 @@ module KeyedList
         , length
         , isEmpty
         , update
+        , updateWithCommand
         , set
         , get
         , remove
@@ -290,6 +291,29 @@ update uid func ({ orderedItems } as keyedList) =
                 )
                 orderedItems
     }
+
+
+updateWithCommand : UID -> (a -> ( a, Cmd msg )) -> KeyedList a -> ( KeyedList a, Cmd msg )
+updateWithCommand uid func ({ orderedItems } as keyedList) =
+    let
+        ( updatedItems, commands ) =
+            orderedItems
+                |> List.map
+                    (\(( uid_, item ) as elt) ->
+                        if uid_ == uid then
+                            let
+                                ( item_, cmd ) =
+                                    func item
+                            in
+                                ( ( uid_, item ), cmd )
+                        else
+                            ( ( uid_, item ), Cmd.none )
+                    )
+                |> List.unzip
+    in
+        ( { keyedList | orderedItems = updatedItems }
+        , Cmd.batch commands
+        )
 
 
 {-| Replace an element in the list. Does nothing if not found.
