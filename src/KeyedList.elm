@@ -316,6 +316,19 @@ updateWithCommand uid func ({ orderedItems } as keyedList) =
         )
 
 
+itemToCommand : UID -> (a -> Cmd msg) -> KeyedList a -> Cmd msg
+itemToCommand uid func ({ orderedItems } as keyedList) =
+    orderedItems
+        |> List.map
+            (\( uid_, item ) ->
+                if uid_ == uid then
+                    func item
+                else
+                    Cmd.none
+            )
+        |> Cmd.batch
+
+
 {-| Replace an element in the list. Does nothing if not found.
 -}
 set : UID -> a -> KeyedList a -> KeyedList a
