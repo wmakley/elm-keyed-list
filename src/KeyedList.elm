@@ -3,6 +3,7 @@ module KeyedList
         ( KeyedList
         , UID
         , uidToString
+        , uidDecoder
         , empty
         , fromList
         , toList
@@ -100,6 +101,7 @@ just get the worst of both worlds!
 import Dict exposing (Dict)
 import Html
 import Html.Keyed
+import Json.Decode as Json
 
 
 {-| Represents a KeyedList. Stores the next UID,
@@ -120,6 +122,23 @@ type alias UID =
 uidToString : UID -> String
 uidToString uid =
     toString uid
+
+
+uidDecoder : Json.Decoder UID
+uidDecoder =
+    Json.oneOf
+        [ Json.int
+        , Json.string
+            |> Json.andThen
+                (\str ->
+                    case String.toInt str of
+                        Ok uid ->
+                            Json.succeed uid
+
+                        Err msg ->
+                            Json.fail msg
+                )
+        ]
 
 
 {-| Just a Tuple of a UID and the element.
