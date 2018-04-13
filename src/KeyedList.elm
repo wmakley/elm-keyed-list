@@ -22,6 +22,7 @@ module KeyedList
         , mapToHTML
         , mapToTableBody
         , map
+        , mapToList
         , sortBy
         , sortByUID
         )
@@ -69,7 +70,7 @@ just get the worst of both worlds!
 
 # Conversions
 
-@docs toList, values, unzip
+@docs toList, values, unzip, mapToList
 
 
 # Updating elements by UID
@@ -292,6 +293,11 @@ map func ({ orderedItems } as keyedList) =
                 )
                 orderedItems
     }
+
+
+mapToList : (UID -> a -> b) -> KeyedList a -> List b
+mapToList func { orderedItems } =
+    List.map (\( uid, elt ) -> func uid elt) orderedItems
 
 
 {-| Update an invidual element by its UID. Does nothing if UID
