@@ -8,7 +8,6 @@ module KeyedList
         , fromList
         , toList
         , values
-        , unzip
         , length
         , isEmpty
         , update
@@ -16,7 +15,6 @@ module KeyedList
         , set
         , get
         , remove
-        , filter
         , appendItem
         , prependItem
         , mapToHTML
@@ -70,17 +68,17 @@ just get the worst of both worlds!
 
 # Conversions
 
-@docs toList, values, unzip, mapToList
+@docs toList, values, mapToList
 
 
 # Updating elements by UID
 
-@docs update, set, get
+@docs update, set, get, updateWithCommand
 
 
 # Adding and removing items
 
-@docs appendItem, remove, prependItem, filter
+@docs appendItem, remove, prependItem
 
 
 # Building UIs
@@ -95,7 +93,12 @@ just get the worst of both worlds!
 
 # Other List functions
 
-@docs length, isEmpty, append, map
+@docs length, isEmpty, map
+
+
+# UIDs
+
+@docs uidToString, uidDecoder
 
 -}
 
@@ -110,7 +113,8 @@ and the internal List of ( UID, element ) tuples.
 -}
 type alias KeyedList a =
     { nextUID : UID
-    , orderedItems : List (KeyedElement a)
+    , items : Dict UID a
+    , order : List UID
     }
 
 
@@ -120,11 +124,15 @@ type alias UID =
     Int
 
 
+{-| Convert a UID to a String
+-}
 uidToString : UID -> String
 uidToString uid =
     toString uid
 
 
+{-| Decode a UID. May most often be used with ports.
+-}
 uidDecoder : Json.Decoder UID
 uidDecoder =
     Json.oneOf
@@ -142,39 +150,46 @@ uidDecoder =
         ]
 
 
-{-| Just a Tuple of a UID and the element.
+{-| Create an empty KeyedList
 -}
-type alias KeyedElement a =
-    ( UID, a )
-
-
 empty : KeyedList a
 empty =
     { nextUID = 1
-    , orderedItems = []
+    , items = Dict.empty
+    , order = []
     }
 
 
+{-| Create a KeyedList from a list of elements, generating a UID for each.
+-}
 fromList : List a -> KeyedList a
 fromList list =
-    { nextUID = (List.length list) + 1
-    , orderedItems =
-        List.indexedMap
-            (\index elt ->
-                wrap (index + 1) elt
-            )
-            list
-    }
+    let
+        itemsWithKeys =
+            List.indexedMap
+                (\index elt ->
+                    ( index + 1, elt )
+                )
+                list
+    in
+        { nextUID = (List.length list) + 1
+        , items = Dict.fromList itemsWithKeys
+        , order = List.map Tuple.first itemsWithKeys
+        }
 
 
+{-| Get the length of the List.
+-}
 length : KeyedList a -> Int
-length { orderedItems } =
-    List.length orderedItems
+length { items } =
+    Dict.size items
 
 
+{-| Check if the list is empty.
+-}
 isEmpty : KeyedList a -> Bool
-isEmpty { orderedItems } =
-    List.isEmpty orderedItems
+isEmpty { items } =
+    Dict.isEmpty items
 
 
 {-| Get a UID for an item, and return the list with incremented nextUID.
@@ -184,45 +199,34 @@ genUID ({ nextUID } as list) =
     ( list.nextUID, { list | nextUID = nextUID + 1 } )
 
 
-{-| Put two KeyedLists together, much in the manner of List.append
--}
-append : KeyedList a -> KeyedList a -> KeyedList a
-append a b =
-    let
-        newList =
-            List.append a.orderedItems b.orderedItems
-    in
-        { nextUID = calculateNextUID newList
-        , orderedItems = newList
-        }
-
-
 {-| Recalculate the next UID if you don't have it any more.
 -}
-calculateNextUID : List (KeyedElement a) -> UID
-calculateNextUID list =
+calculateNextUID : KeyedList a -> UID
+calculateNextUID { order } =
     List.foldl
-        (\( uid, _ ) nextUID ->
+        (\uid nextUID ->
             if uid >= nextUID then
                 uid + 1
             else
                 nextUID
         )
         1
-        list
+        order
 
 
 {-| Add a single item to the end of the list. Deliberately
 not named the same as List.append, because it works differently.
-Slow, use prependItem if you can.
 -}
 appendItem : a -> KeyedList a -> ( KeyedList a, UID )
-appendItem item ({ orderedItems } as list) =
+appendItem item ({ items, order } as keyedList) =
     let
-        ( uid, list_ ) =
-            genUID list
+        ( uid, keyedList_ ) =
+            genUID keyedList
     in
-        ( { list_ | orderedItems = List.append orderedItems [ wrap uid item ] }
+        ( { keyedList_
+            | items = Dict.insert uid item items
+            , order = List.append order [ uid ]
+          }
         , uid
         )
 
@@ -230,48 +234,68 @@ appendItem item ({ orderedItems } as list) =
 {-| Use this if you can, e.g. if the item goes at the top anyway,
 or you are going to sort the KeyedList after adding it.
 -}
-prependItem : a -> KeyedList a -> KeyedList a
-prependItem item ({ orderedItems } as list) =
+prependItem : a -> KeyedList a -> ( KeyedList a, UID )
+prependItem item ({ items, order } as keyedList) =
     let
-        ( uid, list_ ) =
-            genUID list
+        ( uid, keyedList_ ) =
+            genUID keyedList
     in
-        { list_ | orderedItems = (wrap uid item) :: orderedItems }
+        ( { keyedList_
+            | items = Dict.insert uid item items
+            , order = uid :: order
+          }
+        , uid
+        )
 
 
-{-| Wrap an item with its UID.
+{-| Return the internal list of keyed items with their UID.
 -}
-wrap : UID -> a -> KeyedElement a
-wrap uid item =
-    ( uid, item )
+toList : KeyedList a -> List ( UID, a )
+toList { items, order } =
+    order
+        |> List.filterMap
+            (\uid ->
+                items
+                    |> Dict.get uid
+                    |> Maybe.map (\item -> ( uid, item ))
+            )
 
 
-{-| Return the internal list of keyed items.
-Is just accessing a record member, so should be pretty fast.
+{-| Maybe faster than toList + List.map?
+
+Avoids second List fold, but doubles the Maybe checks.
+
 -}
-toList : KeyedList a -> List (KeyedElement a)
-toList { orderedItems } =
-    orderedItems
+mapToList : (UID -> a -> b) -> KeyedList a -> List b
+mapToList func { items, order } =
+    order
+        |> List.filterMap
+            (\uid ->
+                items
+                    |> Dict.get uid
+                    |> Maybe.map (func uid)
+            )
 
 
 {-| Get the list of items without their UID
 -}
 values : KeyedList a -> List a
-values { orderedItems } =
-    List.map Tuple.second orderedItems
+values { items, order } =
+    order
+        |> List.filterMap (\uid -> Dict.get uid items)
 
 
 {-| Shortcut for common use case. Uses Html.Keyed.
 -}
 mapToHTML : (UID -> a -> Html.Html msg) -> String -> List (Html.Attribute msg) -> KeyedList a -> Html.Html msg
-mapToHTML func tagName attributes { orderedItems } =
+mapToHTML func tagName attributes ({ items, order } as keyedList) =
     let
         nodes =
-            List.map
-                (\( uid, item ) ->
-                    ( uidToString uid, func uid item )
-                )
-                orderedItems
+            keyedList
+                |> mapToList
+                    (\uid item ->
+                        ( uidToString uid, func uid item )
+                    )
     in
         Html.Keyed.node tagName attributes nodes
 
@@ -283,142 +307,96 @@ mapToTableBody func attributes list =
     mapToHTML func "tbody" attributes list
 
 
+{-| Same as Dict.map
+-}
 map : (UID -> a -> b) -> KeyedList a -> KeyedList b
-map func ({ orderedItems } as keyedList) =
-    { keyedList
-        | orderedItems =
-            List.map
-                (\( uid, item ) ->
-                    ( uid, func uid item )
-                )
-                orderedItems
-    }
-
-
-mapToList : (UID -> a -> b) -> KeyedList a -> List b
-mapToList func { orderedItems } =
-    List.map (\( uid, elt ) -> func uid elt) orderedItems
+map func ({ items } as keyedList) =
+    { keyedList | items = Dict.map func items }
 
 
 {-| Update an invidual element by its UID. Does nothing if UID
 does not exist.
+
+Unlike Dict, we assume that the user doesn't care if the item doesn't exist.
+
 -}
 update : UID -> (a -> a) -> KeyedList a -> KeyedList a
-update uid func ({ orderedItems } as keyedList) =
+update uid func ({ items } as keyedList) =
     { keyedList
-        | orderedItems =
-            List.map
-                (\(( uid_, item ) as elt) ->
-                    if uid_ == uid then
-                        ( uid_, func item )
-                    else
-                        elt
-                )
-                orderedItems
+        | items =
+            Dict.update
+                uid
+                (Maybe.map func)
+                items
     }
 
 
+{-| Update an item and return a Cmd.
+-}
 updateWithCommand : UID -> (a -> ( a, Cmd msg )) -> KeyedList a -> ( KeyedList a, Cmd msg )
-updateWithCommand uid func ({ orderedItems } as keyedList) =
-    let
-        ( updatedItems, commands ) =
-            orderedItems
-                |> List.map
-                    (\(( uid_, item ) as elt) ->
-                        if uid_ == uid then
-                            let
-                                ( updatedItem, cmd ) =
-                                    func item
-                            in
-                                ( ( uid_, updatedItem ), cmd )
-                        else
-                            ( ( uid_, item ), Cmd.none )
-                    )
-                |> List.unzip
-    in
-        ( { keyedList | orderedItems = updatedItems }
-        , Cmd.batch commands
-        )
+updateWithCommand uid func ({ items } as keyedList) =
+    case Dict.get uid items of
+        Just item ->
+            let
+                ( updatedItem, cmd ) =
+                    func item
+            in
+                ( { keyedList | items = Dict.insert uid updatedItem items }
+                , cmd
+                )
+
+        Nothing ->
+            ( keyedList, Cmd.none )
 
 
 itemToCommand : UID -> (a -> Cmd msg) -> KeyedList a -> Cmd msg
-itemToCommand uid func ({ orderedItems } as keyedList) =
-    orderedItems
-        |> List.map
-            (\( uid_, item ) ->
-                if uid_ == uid then
-                    func item
-                else
-                    Cmd.none
-            )
-        |> Cmd.batch
+itemToCommand uid func { items } =
+    items
+        |> Dict.get uid
+        |> Maybe.map func
+        |> Maybe.withDefault Cmd.none
 
 
 {-| Replace an element in the list. Does nothing if not found.
 -}
 set : UID -> a -> KeyedList a -> KeyedList a
-set uid elt keyedList =
-    update uid (\_ -> elt) keyedList
+set uid elt ({ items } as keyedList) =
+    { keyedList | items = Dict.insert uid elt items }
 
 
-{-| Get an element in the list by its UID. Try not to use with set or update,
-because all of these operations iterate over the entire list.
+{-| Get an element in the list by its UID.
 -}
 get : UID -> KeyedList a -> Maybe a
-get uid { orderedItems } =
-    orderedItems
-        |> List.filterMap
-            (\( uid_, elt ) ->
-                if uid_ == uid then
-                    Just elt
-                else
-                    Nothing
-            )
-        |> List.head
+get uid { items } =
+    Dict.get uid items
 
 
 {-| Remove an element from the list by its UID. Does nothing
 if no element has the UID.
 -}
 remove : UID -> KeyedList a -> KeyedList a
-remove uid ({ orderedItems } as keyedList) =
+remove uid ({ items, order } as keyedList) =
     { keyedList
-        | orderedItems =
-            List.filter
-                (\( uid_, item ) -> uid_ /= uid)
-                orderedItems
-    }
-
-
-filter : (UID -> a -> Bool) -> KeyedList a -> KeyedList a
-filter func ({ orderedItems } as keyedList) =
-    { keyedList
-        | orderedItems =
-            List.filter
-                (\( uid, item ) -> func uid item)
-                orderedItems
+        | items = Dict.remove uid items
+        , order = List.filter (\elt -> elt /= uid) order
     }
 
 
 {-| Re-implementation of List.sortBy
 -}
 sortBy : (UID -> a -> comparable) -> KeyedList a -> KeyedList a
-sortBy func ({ orderedItems } as keyedList) =
+sortBy func ({ items, order } as keyedList) =
     { keyedList
-        | orderedItems =
-            List.sortBy
-                (\( uid, item ) -> func uid item)
-                orderedItems
+        | order =
+            keyedList
+                |> toList
+                |> List.sortBy (\( uid, item ) -> func uid item)
+                |> List.map Tuple.first
     }
 
 
 {-| Convenience function to sort by UID
 -}
 sortByUID : KeyedList a -> KeyedList a
-sortByUID ({ orderedItems } as keyedList) =
-    { keyedList | orderedItems = List.sortBy Tuple.first orderedItems }
-
-
-unzip : KeyedList a -> ( List UID, List a )
-unzip keyedList =
-    keyedList |> toList |> List.unzip
+sortByUID ({ items } as keyedList) =
+    { keyedList | order = Dict.keys items }
