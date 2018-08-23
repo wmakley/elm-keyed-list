@@ -113,7 +113,7 @@ type alias UID =
 -}
 uidToString : UID -> String
 uidToString uid =
-    toString uid
+    String.fromInt uid
 
 
 {-| Decode a UID. May most often be used with ports.
@@ -126,11 +126,11 @@ uidDecoder =
             |> Json.andThen
                 (\str ->
                     case String.toInt str of
-                        Ok uid ->
+                        Just uid ->
                             Json.succeed uid
 
-                        Err msg ->
-                            Json.fail msg
+                        Nothing ->
+                            Json.fail ("invalid int string: " ++ str)
                 )
         ]
 
@@ -297,7 +297,10 @@ mapToTableBody func attributes list =
 -}
 map : (UID -> a -> b) -> KeyedList a -> KeyedList b
 map func ({ items } as keyedList) =
-    { keyedList | items = Dict.map func items }
+    { items = Dict.map func items
+    , nextUID = keyedList.nextUID
+    , order = keyedList.order
+    }
 
 
 {-| Update an invidual element by its UID. Does nothing if UID
