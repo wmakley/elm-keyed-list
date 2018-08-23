@@ -1,29 +1,14 @@
-module KeyedList
-    exposing
-        ( KeyedList
-        , UID
-        , uidToString
-        , uidDecoder
-        , empty
-        , fromList
-        , toList
-        , values
-        , length
-        , isEmpty
-        , update
-        , updateWithCommand
-        , set
-        , get
-        , remove
-        , appendItem
-        , prependItem
-        , mapToHTML
-        , mapToTableBody
-        , map
-        , mapToList
-        , sortBy
-        , sortByUID
-        )
+module KeyedList exposing
+    ( KeyedList, UID
+    , empty, fromList
+    , toList, values, mapToList
+    , update, set, get, updateWithCommand
+    , appendItem, remove, prependItem
+    , mapToHTML, mapToTableBody
+    , sortBy, sortByUID
+    , length, isEmpty, map
+    , uidToString, uidDecoder
+    )
 
 {-| Implements some Dict functions on top of a list.
 Useful for building UI's of collections
@@ -172,10 +157,10 @@ fromList list =
                 )
                 list
     in
-        { nextUID = (List.length list) + 1
-        , items = Dict.fromList itemsWithKeys
-        , order = List.map Tuple.first itemsWithKeys
-        }
+    { nextUID = List.length list + 1
+    , items = Dict.fromList itemsWithKeys
+    , order = List.map Tuple.first itemsWithKeys
+    }
 
 
 {-| Get the length of the List.
@@ -207,6 +192,7 @@ calculateNextUID { order } =
         (\uid nextUID ->
             if uid >= nextUID then
                 uid + 1
+
             else
                 nextUID
         )
@@ -223,12 +209,12 @@ appendItem item ({ items, order } as keyedList) =
         ( uid, keyedList_ ) =
             genUID keyedList
     in
-        ( { keyedList_
-            | items = Dict.insert uid item items
-            , order = List.append order [ uid ]
-          }
-        , uid
-        )
+    ( { keyedList_
+        | items = Dict.insert uid item items
+        , order = List.append order [ uid ]
+      }
+    , uid
+    )
 
 
 {-| Use this if you can, e.g. if the item goes at the top anyway,
@@ -240,12 +226,12 @@ prependItem item ({ items, order } as keyedList) =
         ( uid, keyedList_ ) =
             genUID keyedList
     in
-        ( { keyedList_
-            | items = Dict.insert uid item items
-            , order = uid :: order
-          }
-        , uid
-        )
+    ( { keyedList_
+        | items = Dict.insert uid item items
+        , order = uid :: order
+      }
+    , uid
+    )
 
 
 {-| Return the internal list of keyed items with their UID.
@@ -297,7 +283,7 @@ mapToHTML func tagName attributes ({ items, order } as keyedList) =
                         ( uidToString uid, func uid item )
                     )
     in
-        Html.Keyed.node tagName attributes nodes
+    Html.Keyed.node tagName attributes nodes
 
 
 {-| func should return an entire table row (tr) tag
@@ -341,9 +327,9 @@ updateWithCommand uid func ({ items } as keyedList) =
                 ( updatedItem, cmd ) =
                     func item
             in
-                ( { keyedList | items = Dict.insert uid updatedItem items }
-                , cmd
-                )
+            ( { keyedList | items = Dict.insert uid updatedItem items }
+            , cmd
+            )
 
         Nothing ->
             ( keyedList, Cmd.none )
