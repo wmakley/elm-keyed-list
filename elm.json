@@ -1,7 +1,8 @@
 {
     "type": "package",
-    "name": "tortus/elm-keyed-table",
+    "name": "tortus/elm-keyed-list",
     "summary": "Keyed List library for Elm",
+    "repository": "https://github.com/wmakley/elm-keyed-list.git",
     "license": "BSD-3-Clause",
     "version": "1.0.0",
     "exposed-modules": [
