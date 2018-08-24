@@ -163,6 +163,25 @@ fromList list =
     }
 
 
+fromListBy : (a -> UID) -> List a -> KeyedList a
+fromListBy getUID list =
+    let
+        itemsWithKeys =
+            List.map
+                (\elt ->
+                    ( getUID elt, elt )
+                )
+                list
+
+        keys =
+            List.map Tuple.first itemsWithKeys
+    in
+    { nextUID = List.maximum keys + 1
+    , items = Dict.fromList itemsWithKeys
+    , order = keys
+    }
+
+
 {-| Get the length of the List.
 -}
 length : KeyedList a -> Int
