@@ -1,20 +1,19 @@
 module KeyedList exposing
-    ( KeyedList, UID
-    , empty, fromList
+    ( KeyedList
+    , empty, fromList, fromListBy
     , toList, values, mapToList
     , update, set, get, updateWithCommand
-    , appendItem, remove, prependItem
+    , append, remove, prepend
     , mapToHTML, mapToTableBody
-    , sortBy, sortByUID
+    , sortBy, sortByKey
     , length, isEmpty, map
-    , uidToString, uidDecoder
     )
 
 {-| Implements some Dict functions on top of a list.
 Useful for building UI's of collections
 of elements that can be updated individually and
 added, removed, or reordered. This is implemented
-using UID's, NOT the position of each element, so
+using key's, NOT the position of each element, so
 messages always go to the right place even if the list
 is reordered.
 
@@ -43,12 +42,12 @@ just get the worst of both worlds!
 
 # Types
 
-@docs KeyedList, UID
+@docs KeyedList
 
 
 # Initialization
 
-@docs empty, fromList
+@docs empty, fromList, fromListBy
 
 
 # Conversions
@@ -56,14 +55,14 @@ just get the worst of both worlds!
 @docs toList, values, mapToList
 
 
-# Updating elements by UID
+# Updating elements by key
 
 @docs update, set, get, updateWithCommand
 
 
-# Adding and removing items
+# Adding and removing elements
 
-@docs appendItem, remove, prependItem
+@docs append, remove, prepend
 
 
 # Building UIs
@@ -73,17 +72,12 @@ just get the worst of both worlds!
 
 # Sorting
 
-@docs sortBy, sortByUID
+@docs sortBy, sortByKey
 
 
-# Other List functions
+# Other List/Dict functions
 
 @docs length, isEmpty, map
-
-
-# UIDs
-
-@docs uidToString, uidDecoder
 
 -}
 
@@ -93,176 +87,92 @@ import Html.Keyed
 import Json.Decode as Json
 
 
-{-| Represents a KeyedList. Stores the next UID,
-and the internal List of ( UID, element ) tuples.
--}
-type alias KeyedList a =
-    { nextUID : UID
-    , items : Dict UID a
-    , order : List UID
+type alias KeyedList comparable a =
+    { items : Dict comparable a
+    , order : List comparable
     }
-
-
-{-| Treat as black box, may change in future.
--}
-type alias UID =
-    Int
-
-
-{-| Convert a UID to a String
--}
-uidToString : UID -> String
-uidToString uid =
-    String.fromInt uid
-
-
-{-| Decode a UID. May most often be used with ports.
--}
-uidDecoder : Json.Decoder UID
-uidDecoder =
-    Json.oneOf
-        [ Json.int
-        , Json.string
-            |> Json.andThen
-                (\str ->
-                    case String.toInt str of
-                        Just uid ->
-                            Json.succeed uid
-
-                        Nothing ->
-                            Json.fail ("invalid int string: " ++ str)
-                )
-        ]
 
 
 {-| Create an empty KeyedList
 -}
-empty : KeyedList a
+empty : KeyedList comparable a
 empty =
-    { nextUID = 1
-    , items = Dict.empty
+    { items = Dict.empty
     , order = []
     }
 
 
-{-| Create a KeyedList from a list of elements, generating a UID for each.
+{-| Create a KeyedList from a list of (keys, element) tuples.
 -}
-fromList : List a -> KeyedList a
-fromList list =
-    let
-        itemsWithKeys =
-            List.indexedMap
-                (\index elt ->
-                    ( index + 1, elt )
-                )
-                list
-    in
-    { nextUID = List.length list + 1
-    , items = Dict.fromList itemsWithKeys
+fromList : List ( comparable, a ) -> KeyedList comparable a
+fromList itemsWithKeys =
+    { items = Dict.fromList itemsWithKeys
     , order = List.map Tuple.first itemsWithKeys
     }
 
 
-fromListBy : (a -> UID) -> List a -> KeyedList a
-fromListBy getUID list =
+fromListBy : (a -> comparable) -> List a -> KeyedList comparable a
+fromListBy getKey list =
     let
         itemsWithKeys =
             List.map
                 (\elt ->
-                    ( getUID elt, elt )
+                    ( getKey elt, elt )
                 )
                 list
 
-        keys =
+        order =
             List.map Tuple.first itemsWithKeys
     in
-    { nextUID = List.maximum keys + 1
-    , items = Dict.fromList itemsWithKeys
-    , order = keys
+    { items = Dict.fromList itemsWithKeys
+    , order = order
     }
 
 
 {-| Get the length of the List.
 -}
-length : KeyedList a -> Int
+length : KeyedList comparable a -> Int
 length { items } =
     Dict.size items
 
 
 {-| Check if the list is empty.
 -}
-isEmpty : KeyedList a -> Bool
-isEmpty { items } =
-    Dict.isEmpty items
+isEmpty : KeyedList comparable a -> Bool
+isEmpty { order } =
+    List.isEmpty order
 
 
-{-| Get a UID for an item, and return the list with incremented nextUID.
+{-| Add an item to the end of the list.
 -}
-genUID : KeyedList a -> ( UID, KeyedList a )
-genUID ({ nextUID } as list) =
-    ( list.nextUID, { list | nextUID = nextUID + 1 } )
+append : comparable -> a -> KeyedList comparable a -> KeyedList comparable a
+append key item ({ items, order } as keyedList) =
+    { keyedList
+        | items = Dict.insert key item items
+        , order = List.append order [ key ]
+    }
 
 
-{-| Recalculate the next UID if you don't have it any more.
+{-| Add an item to the front of the list.
 -}
-calculateNextUID : KeyedList a -> UID
-calculateNextUID { order } =
-    List.foldl
-        (\uid nextUID ->
-            if uid >= nextUID then
-                uid + 1
-
-            else
-                nextUID
-        )
-        1
-        order
+prepend : comparable -> a -> KeyedList comparable a -> KeyedList comparable a
+prepend key item ({ items, order } as keyedList) =
+    { keyedList
+        | items = Dict.insert key item items
+        , order = key :: order
+    }
 
 
-{-| Add a single item to the end of the list. Deliberately
-not named the same as List.append, because it works differently.
+{-| Get the list of items with their keys.
 -}
-appendItem : a -> KeyedList a -> ( KeyedList a, UID )
-appendItem item ({ items, order } as keyedList) =
-    let
-        ( uid, keyedList_ ) =
-            genUID keyedList
-    in
-    ( { keyedList_
-        | items = Dict.insert uid item items
-        , order = List.append order [ uid ]
-      }
-    , uid
-    )
-
-
-{-| Use this if you can, e.g. if the item goes at the top anyway,
-or you are going to sort the KeyedList after adding it.
--}
-prependItem : a -> KeyedList a -> ( KeyedList a, UID )
-prependItem item ({ items, order } as keyedList) =
-    let
-        ( uid, keyedList_ ) =
-            genUID keyedList
-    in
-    ( { keyedList_
-        | items = Dict.insert uid item items
-        , order = uid :: order
-      }
-    , uid
-    )
-
-
-{-| Return the internal list of keyed items with their UID.
--}
-toList : KeyedList a -> List ( UID, a )
+toList : KeyedList comparable a -> List ( comparable, a )
 toList { items, order } =
     order
         |> List.filterMap
-            (\uid ->
+            (\key ->
                 items
-                    |> Dict.get uid
-                    |> Maybe.map (\item -> ( uid, item ))
+                    |> Dict.get key
+                    |> Maybe.map (\item -> ( key, item ))
             )
 
 
@@ -271,85 +181,91 @@ toList { items, order } =
 Avoids second List fold, but doubles the Maybe checks.
 
 -}
-mapToList : (UID -> a -> b) -> KeyedList a -> List b
+mapToList : (comparable -> a -> b) -> KeyedList comparable a -> List b
 mapToList func { items, order } =
     order
         |> List.filterMap
-            (\uid ->
+            (\key ->
                 items
-                    |> Dict.get uid
-                    |> Maybe.map (func uid)
+                    |> Dict.get key
+                    |> Maybe.map (func key)
             )
 
 
-{-| Get the list of items without their UID
+{-| Get the list of items without their keys.
 -}
-values : KeyedList a -> List a
+values : KeyedList comparable a -> List a
 values { items, order } =
     order
-        |> List.filterMap (\uid -> Dict.get uid items)
+        |> List.filterMap (\key -> Dict.get key items)
 
 
 {-| Shortcut for common use case. Uses Html.Keyed.
 -}
-mapToHTML : (UID -> a -> Html.Html msg) -> String -> List (Html.Attribute msg) -> KeyedList a -> Html.Html msg
-mapToHTML func tagName attributes ({ items, order } as keyedList) =
+mapToHTML :
+    (comparable -> String)
+    -> (comparable -> a -> Html.Html msg)
+    -> String
+    -> List (Html.Attribute msg)
+    -> KeyedList comparable a
+    -> Html.Html msg
+mapToHTML keyToString toHtml tagName attributes keyedList =
     let
         nodes =
             keyedList
                 |> mapToList
-                    (\uid item ->
-                        ( uidToString uid, func uid item )
+                    (\key item ->
+                        ( keyToString key, toHtml key item )
                     )
     in
     Html.Keyed.node tagName attributes nodes
 
 
-{-| func should return an entire table row (tr) tag
+{-| toHtml should return an entire table row (tr) tag
 -}
-mapToTableBody : (UID -> a -> Html.Html msg) -> List (Html.Attribute msg) -> KeyedList a -> Html.Html msg
-mapToTableBody func attributes list =
-    mapToHTML func "tbody" attributes list
+mapToTableBody :
+    (comparable -> String)
+    -> (comparable -> a -> Html.Html msg)
+    -> List (Html.Attribute msg)
+    -> KeyedList comparable a
+    -> Html.Html msg
+mapToTableBody keyToString toHtml attributes list =
+    mapToHTML keyToString toHtml "tbody" attributes list
 
 
 {-| Same as Dict.map
 -}
-map : (UID -> a -> b) -> KeyedList a -> KeyedList b
-map func ({ items } as keyedList) =
+map : (comparable -> a -> b) -> KeyedList comparable a -> KeyedList comparable b
+map func ({ items, order } as keyedList) =
     { items = Dict.map func items
-    , nextUID = keyedList.nextUID
-    , order = keyedList.order
+    , order = order
     }
 
 
-{-| Update an invidual element by its UID. Does nothing if UID
-does not exist.
-
-Unlike Dict, we assume that the user doesn't care if the item doesn't exist.
-
+{-| Update an invidual element by its key.
 -}
-update : UID -> (a -> a) -> KeyedList a -> KeyedList a
-update uid func ({ items } as keyedList) =
+update : comparable -> (Maybe a -> Maybe a) -> KeyedList comparable a -> KeyedList comparable a
+update key func ({ items } as keyedList) =
     { keyedList
         | items =
             Dict.update
-                uid
-                (Maybe.map func)
+                key
+                func
                 items
     }
 
 
 {-| Update an item and return a Cmd.
 -}
-updateWithCommand : UID -> (a -> ( a, Cmd msg )) -> KeyedList a -> ( KeyedList a, Cmd msg )
-updateWithCommand uid func ({ items } as keyedList) =
-    case Dict.get uid items of
+updateWithCommand : comparable -> (a -> ( a, Cmd msg )) -> KeyedList comparable a -> ( KeyedList comparable a, Cmd msg )
+updateWithCommand key func ({ items } as keyedList) =
+    case Dict.get key items of
         Just item ->
             let
                 ( updatedItem, cmd ) =
                     func item
             in
-            ( { keyedList | items = Dict.insert uid updatedItem items }
+            ( { keyedList | items = Dict.insert key updatedItem items }
             , cmd
             )
 
@@ -357,54 +273,54 @@ updateWithCommand uid func ({ items } as keyedList) =
             ( keyedList, Cmd.none )
 
 
-itemToCommand : UID -> (a -> Cmd msg) -> KeyedList a -> Cmd msg
-itemToCommand uid func { items } =
+itemToCommand : comparable -> (a -> Cmd msg) -> KeyedList comparable a -> Cmd msg
+itemToCommand key func { items } =
     items
-        |> Dict.get uid
+        |> Dict.get key
         |> Maybe.map func
         |> Maybe.withDefault Cmd.none
 
 
 {-| Replace an element in the list. Does nothing if not found.
 -}
-set : UID -> a -> KeyedList a -> KeyedList a
-set uid elt ({ items } as keyedList) =
-    { keyedList | items = Dict.insert uid elt items }
+set : comparable -> a -> KeyedList comparable a -> KeyedList comparable a
+set key elt ({ items } as keyedList) =
+    { keyedList | items = Dict.insert key elt items }
 
 
-{-| Get an element in the list by its UID.
+{-| Get an element in the list by its key.
 -}
-get : UID -> KeyedList a -> Maybe a
-get uid { items } =
-    Dict.get uid items
+get : comparable -> KeyedList comparable a -> Maybe a
+get key { items } =
+    Dict.get key items
 
 
-{-| Remove an element from the list by its UID. Does nothing
-if no element has the UID.
+{-| Remove an element from the list by its key. Does nothing
+if no element has the key.
 -}
-remove : UID -> KeyedList a -> KeyedList a
-remove uid ({ items, order } as keyedList) =
+remove : comparable -> KeyedList comparable a -> KeyedList comparable a
+remove key ({ items, order } as keyedList) =
     { keyedList
-        | items = Dict.remove uid items
-        , order = List.filter (\elt -> elt /= uid) order
+        | items = Dict.remove key items
+        , order = List.filter (\elt -> elt /= key) order
     }
 
 
 {-| Re-implementation of List.sortBy
 -}
-sortBy : (UID -> a -> comparable) -> KeyedList a -> KeyedList a
+sortBy : (comparable -> a -> comparable) -> KeyedList comparable a -> KeyedList comparable a
 sortBy func ({ items, order } as keyedList) =
     { keyedList
         | order =
             keyedList
                 |> toList
-                |> List.sortBy (\( uid, item ) -> func uid item)
+                |> List.sortBy (\( key, item ) -> func key item)
                 |> List.map Tuple.first
     }
 
 
-{-| Convenience function to sort by UID
+{-| Convenience function to sort by key.
 -}
-sortByUID : KeyedList a -> KeyedList a
-sortByUID ({ items } as keyedList) =
+sortByKey : KeyedList comparable a -> KeyedList comparable a
+sortByKey ({ items } as keyedList) =
     { keyedList | order = Dict.keys items }
