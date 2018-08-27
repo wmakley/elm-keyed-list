@@ -1,12 +1,13 @@
 module KeyedList exposing
     ( KeyedList
     , empty, fromList, fromListBy
-    , toList, values, mapToList
-    , update, set, get, updateWithCommand
+    , toList, keys, values, mapToList
+    , update, set, get, insert, updateWithCommand
     , append, remove, prepend
-    , mapToHTML, mapToTableBody
+    , mapToHtml, mapToTableBody
     , sortBy, sortByKey
     , length, isEmpty, map
+    , itemToCommand
     )
 
 {-| Implements some Dict functions on top of a list.
@@ -52,12 +53,12 @@ just get the worst of both worlds!
 
 # Conversions
 
-@docs toList, values, mapToList
+@docs toList, keys, values, mapToList
 
 
 # Updating elements by key
 
-@docs update, set, get, updateWithCommand
+@docs update, set, get, insert, updateWithCommand
 
 
 # Adding and removing elements
@@ -67,7 +68,7 @@ just get the worst of both worlds!
 
 # Building UIs
 
-@docs mapToHTML, mapToTableBody
+@docs mapToHtml, mapToTableBody
 
 
 # Sorting
@@ -178,7 +179,7 @@ toList { items, order } =
 
 {-| Maybe faster than toList + List.map?
 
-Avoids second List fold, but doubles the Maybe checks.
+Avoids second List.foldl, but doubles the Maybe checks.
 
 -}
 mapToList : (comparable -> a -> b) -> KeyedList comparable a -> List b
@@ -192,6 +193,11 @@ mapToList func { items, order } =
             )
 
 
+keys : KeyedList comparable a -> List comparable
+keys keydList =
+    keydList.order
+
+
 {-| Get the list of items without their keys.
 -}
 values : KeyedList comparable a -> List a
@@ -202,14 +208,14 @@ values { items, order } =
 
 {-| Shortcut for common use case. Uses Html.Keyed.
 -}
-mapToHTML :
+mapToHtml :
     (comparable -> String)
     -> (comparable -> a -> Html.Html msg)
     -> String
     -> List (Html.Attribute msg)
     -> KeyedList comparable a
     -> Html.Html msg
-mapToHTML keyToString toHtml tagName attributes keyedList =
+mapToHtml keyToString toHtml tagName attributes keyedList =
     let
         nodes =
             keyedList
@@ -230,7 +236,7 @@ mapToTableBody :
     -> KeyedList comparable a
     -> Html.Html msg
 mapToTableBody keyToString toHtml attributes list =
-    mapToHTML keyToString toHtml "tbody" attributes list
+    mapToHtml keyToString toHtml "tbody" attributes list
 
 
 {-| Same as Dict.map
@@ -253,6 +259,25 @@ update key func ({ items } as keyedList) =
                 func
                 items
     }
+
+
+{-| Add or replace an element at a given key and position.
+-}
+insert : comparable -> a -> KeyedList comparable a -> KeyedList comparable a
+insert key item ({ items, order } as keyedList) =
+    case Dict.get key items of
+        Just _ ->
+            -- Just update it in-place
+            { keyedList
+                | items = Dict.insert key item items
+            }
+
+        Nothing ->
+            -- We have to both insert it into the Dict and append it to the order
+            { keyedList
+                | items = Dict.insert key item items
+                , order = List.append order [ key ]
+            }
 
 
 {-| Update an item and return a Cmd.
@@ -281,11 +306,11 @@ itemToCommand key func { items } =
         |> Maybe.withDefault Cmd.none
 
 
-{-| Replace an element in the list. Does nothing if not found.
+{-| Replace an element. Does nothing if not found.
 -}
 set : comparable -> a -> KeyedList comparable a -> KeyedList comparable a
-set key elt ({ items } as keyedList) =
-    { keyedList | items = Dict.insert key elt items }
+set key newValue keyedList =
+    update key (Maybe.map (\_ -> newValue)) keyedList
 
 
 {-| Get an element in the list by its key.
@@ -308,7 +333,7 @@ remove key ({ items, order } as keyedList) =
 
 {-| Re-implementation of List.sortBy
 -}
-sortBy : (comparable -> a -> comparable) -> KeyedList comparable a -> KeyedList comparable a
+sortBy : (comparable -> a -> comparable1) -> KeyedList comparable a -> KeyedList comparable a
 sortBy func ({ items, order } as keyedList) =
     { keyedList
         | order =
