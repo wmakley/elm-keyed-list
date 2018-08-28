@@ -1,13 +1,13 @@
 module KeyedList exposing
     ( KeyedList
     , empty, fromList, fromListBy
-    , toList, keys, values, mapToList
+    , toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
     , update, set, get, insert, updateWithCommand
     , append, remove, prepend
     , mapToHtml, mapToTableBody
     , sortBy, sortByKey
     , length, isEmpty, map
-    , itemToCommand
+    , filter, itemToCommand, reverse
     )
 
 {-| Implements some Dict functions on top of a list.
@@ -53,7 +53,7 @@ just get the worst of both worlds!
 
 # Conversions
 
-@docs toList, keys, values, mapToList
+@docs toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
 
 
 # Updating elements by key
@@ -191,6 +191,57 @@ mapToList func { items, order } =
                     |> Dict.get key
                     |> Maybe.map (func key)
             )
+
+
+{-| Forget about the custom order and do a Dict.map
+-}
+unorderedMap : (comparable -> a -> b) -> KeyedList comparable a -> KeyedList comparable b
+unorderedMap func { items, order } =
+    { items = Dict.map func items
+    , order = order
+    }
+
+
+{-| Map over an AutoIncList, splitting off a seconary list of each second tuple element
+and its key. Unordered operation. The second list is in key order.
+
+Probably extremely inefficient.
+
+-}
+mapAndUnzip :
+    (comparable -> a -> ( b, c ))
+    -> KeyedList comparable a
+    -> ( KeyedList comparable b, List c )
+mapAndUnzip toTuple keyedList =
+    let
+        originalOrder =
+            keyedList.order
+
+        ( listA, listB ) =
+            keyedList.items
+                |> Dict.toList
+                |> List.map
+                    (\( key, value ) ->
+                        let
+                            ( valueA, valueB ) =
+                                toTuple key value
+                        in
+                        ( ( key, valueA ), valueB )
+                    )
+                |> List.unzip
+    in
+    ( { items = Dict.fromList listA
+      , order = originalOrder
+      }
+    , listB
+    )
+
+
+{-| Forget about the custom order and do a Dict.toList
+-}
+toUnorderedList : KeyedList comparable a -> List ( comparable, a )
+toUnorderedList { items } =
+    Dict.toList items
 
 
 keys : KeyedList comparable a -> List comparable
@@ -331,6 +382,18 @@ remove key ({ items, order } as keyedList) =
     }
 
 
+filter : (comparable -> a -> Bool) -> KeyedList comparable a -> KeyedList comparable a
+filter func ({ items, order } as keyedList) =
+    let
+        filteredItems =
+            Dict.filter func items
+    in
+    { keyedList
+        | items = filteredItems
+        , order = List.filter (\key -> Dict.member key filteredItems) order
+    }
+
+
 {-| Re-implementation of List.sortBy
 -}
 sortBy : (comparable -> a -> comparable1) -> KeyedList comparable a -> KeyedList comparable a
@@ -342,6 +405,11 @@ sortBy func ({ items, order } as keyedList) =
                 |> List.sortBy (\( key, item ) -> func key item)
                 |> List.map Tuple.first
     }
+
+
+reverse : KeyedList comparable a -> KeyedList comparable a
+reverse ({ order } as keyedList) =
+    { keyedList | order = List.reverse order }
 
 
 {-| Convenience function to sort by key.

@@ -1,13 +1,14 @@
 module KeyedList.AutoIncList exposing
     ( AutoIncList, UID
     , empty, fromList
-    , toList, keys, values, mapToList
+    , toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
     , update, set, get, updateWithCommand
     , append, remove, prepend
     , mapToHtml, mapToTableBody
     , sortBy, sortByUID
     , length, isEmpty, map
     , uidToString, uidDecoder
+    , filter, reverse
     )
 
 {-| Implements some Dict functions on top of a list.
@@ -53,7 +54,7 @@ just get the worst of both worlds!
 
 # Conversions
 
-@docs toList, keys, values, mapToList
+@docs toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
 
 
 # Updating elements by UID
@@ -283,6 +284,44 @@ map func ({ list, nextUID } as autoIncList) =
     }
 
 
+{-| Forget about the custom order and just do a Dict.map
+-}
+unorderedMap : (UID -> a -> b) -> AutoIncList a -> AutoIncList b
+unorderedMap func { nextUID, list } =
+    { nextUID = nextUID
+    , list = KeyedList.unorderedMap func list
+    }
+
+
+{-| Map over an AutoIncList, splitting off a seconary list of each second tuple element
+and its key. Unordered operation. The second list is in key order.
+
+Probably extremely inefficient.
+
+-}
+mapAndUnzip :
+    (UID -> a -> ( b, c ))
+    -> AutoIncList a
+    -> ( AutoIncList b, List c )
+mapAndUnzip toTuple autoIncList =
+    let
+        ( listA, listB ) =
+            KeyedList.mapAndUnzip toTuple autoIncList.list
+    in
+    ( { nextUID = autoIncList.nextUID
+      , list = listA
+      }
+    , listB
+    )
+
+
+{-| Forget about the custom order and just do a Dict.toList
+-}
+toUnorderedList : AutoIncList a -> List ( UID, a )
+toUnorderedList { list } =
+    KeyedList.toUnorderedList list
+
+
 {-| Update an invidual element by its UID.
 -}
 update : UID -> (Maybe a -> Maybe a) -> AutoIncList a -> AutoIncList a
@@ -322,6 +361,11 @@ get uid { list } =
     KeyedList.get uid list
 
 
+filter : (UID -> a -> Bool) -> AutoIncList a -> AutoIncList a
+filter func ({ list } as autoIncList) =
+    { autoIncList | list = KeyedList.filter func list }
+
+
 {-| Remove an element from the list by its UID. Does nothing
 if no element has the UID.
 -}
@@ -344,3 +388,8 @@ sortBy func ({ list } as autoIncList) =
 sortByUID : AutoIncList a -> AutoIncList a
 sortByUID ({ list } as autoIncList) =
     { autoIncList | list = KeyedList.sortByKey list }
+
+
+reverse : AutoIncList a -> AutoIncList a
+reverse ({ list } as autoIncList) =
+    { autoIncList | list = KeyedList.reverse list }
