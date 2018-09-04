@@ -2,7 +2,7 @@ module KeyedList.AutoIncList exposing
     ( AutoIncList, UID
     , empty, fromList
     , toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
-    , update, set, get, updateWithCommand
+    , update, set, get, updateWithCommand, updateWithExtra
     , append, remove, prepend
     , mapToHtml, mapToTableBody
     , sortBy, sortByUID
@@ -59,7 +59,7 @@ just get the worst of both worlds!
 
 # Updating elements by UID
 
-@docs update, set, get, updateWithCommand
+@docs update, set, get, updateWithCommand, updateWithExtra
 
 
 # Adding and removing items
@@ -331,6 +331,17 @@ update uid func ({ list } as autoIncList) =
     }
 
 
+{-| Update an item and return a some other value if found.
+-}
+updateWithExtra : UID -> (Maybe a -> ( Maybe a, b )) -> AutoIncList a -> ( AutoIncList a, b )
+updateWithExtra uid func ({ list } as autoIncList) =
+    let
+        ( updatedList, extra ) =
+            KeyedList.updateWithExtra uid func list
+    in
+    ( { autoIncList | list = updatedList }, extra )
+
+
 {-| Update an item and return a Cmd.
 -}
 updateWithCommand : UID -> (a -> ( a, Cmd msg )) -> AutoIncList a -> ( AutoIncList a, Cmd msg )
@@ -342,7 +353,7 @@ updateWithCommand uid func ({ list } as autoIncList) =
     ( { autoIncList | list = updatedList }, cmd )
 
 
-itemToCommand : UID -> (a -> Cmd msg) -> AutoIncList a -> Cmd msg
+itemToCommand : UID -> (Maybe a -> Cmd msg) -> AutoIncList a -> Cmd msg
 itemToCommand uid func { list } =
     KeyedList.itemToCommand uid func list
 

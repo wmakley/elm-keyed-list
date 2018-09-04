@@ -2,7 +2,7 @@ module KeyedList exposing
     ( KeyedList
     , empty, fromList, fromListBy
     , toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
-    , update, set, get, insert, updateWithCommand
+    , update, set, get, insert, updateWithCommand, updateWithExtra
     , append, remove, prepend
     , mapToHtml, mapToTableBody
     , sortBy, sortByKey
@@ -58,7 +58,7 @@ just get the worst of both worlds!
 
 # Updating elements by key
 
-@docs update, set, get, insert, updateWithCommand
+@docs update, set, get, insert, updateWithCommand, updateWithExtra
 
 
 # Adding and removing elements
@@ -334,14 +334,14 @@ insert key item ({ items, order } as keyedList) =
 {-| Update an item and return a Cmd.
 -}
 updateWithCommand : comparable -> (a -> ( a, Cmd msg )) -> KeyedList comparable a -> ( KeyedList comparable a, Cmd msg )
-updateWithCommand key func ({ items } as keyedList) =
-    case Dict.get key items of
+updateWithCommand key func keyedList =
+    case Dict.get key keyedList.items of
         Just item ->
             let
                 ( updatedItem, cmd ) =
                     func item
             in
-            ( { keyedList | items = Dict.insert key updatedItem items }
+            ( { keyedList | items = Dict.insert key updatedItem keyedList.items }
             , cmd
             )
 
@@ -349,12 +349,39 @@ updateWithCommand key func ({ items } as keyedList) =
             ( keyedList, Cmd.none )
 
 
-itemToCommand : comparable -> (a -> Cmd msg) -> KeyedList comparable a -> Cmd msg
+{-| TODO: just pass the full maybe into the func, so it can decide
+what second value to return if no element found.
+-}
+updateWithExtra : comparable -> (Maybe a -> ( Maybe a, b )) -> KeyedList comparable a -> ( KeyedList comparable a, b )
+updateWithExtra key func ({ items } as keyedList) =
+    case Dict.get key items of
+        Just item ->
+            let
+                ( updatedItem, extra ) =
+                    func (Just item)
+            in
+            ( case updatedItem of
+                Just finalItem ->
+                    { keyedList | items = Dict.insert key finalItem items }
+
+                Nothing ->
+                    keyedList
+            , extra
+            )
+
+        Nothing ->
+            let
+                ( _, extra ) =
+                    func Nothing
+            in
+            ( keyedList, extra )
+
+
+itemToCommand : comparable -> (Maybe a -> Cmd msg) -> KeyedList comparable a -> Cmd msg
 itemToCommand key func { items } =
     items
         |> Dict.get key
-        |> Maybe.map func
-        |> Maybe.withDefault Cmd.none
+        |> func
 
 
 {-| Replace an element. Does nothing if not found.
