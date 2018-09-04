@@ -1,7 +1,7 @@
 module KeyedList.AutoIncList exposing
     ( AutoIncList, UID
     , empty, fromList
-    , toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
+    , toList, keys, values, mapToList, toUnorderedList, mapAndUnzip
     , update, set, get, updateWithCommand, updateWithExtra
     , append, remove, prepend
     , mapToHtml, mapToTableBody
@@ -54,7 +54,7 @@ just get the worst of both worlds!
 
 # Conversions
 
-@docs toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
+@docs toList, keys, values, mapToList, toUnorderedList, mapAndUnzip
 
 
 # Updating elements by UID
@@ -281,15 +281,6 @@ map : (UID -> a -> b) -> AutoIncList a -> AutoIncList b
 map func ({ list, nextUID } as autoIncList) =
     { list = KeyedList.map func list
     , nextUID = nextUID
-    }
-
-
-{-| Forget about the custom order and just do a Dict.map
--}
-unorderedMap : (UID -> a -> b) -> AutoIncList a -> AutoIncList b
-unorderedMap func { nextUID, list } =
-    { nextUID = nextUID
-    , list = KeyedList.unorderedMap func list
     }
 
 

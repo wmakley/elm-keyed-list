@@ -1,7 +1,7 @@
 module KeyedList exposing
     ( KeyedList
     , empty, fromList, fromListBy
-    , toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
+    , toList, keys, values, mapToList, toUnorderedList, mapAndUnzip
     , update, set, get, insert, updateWithCommand, updateWithExtra
     , append, remove, prepend
     , mapToHtml, mapToTableBody
@@ -53,7 +53,7 @@ just get the worst of both worlds!
 
 # Conversions
 
-@docs toList, keys, values, mapToList, unorderedMap, toUnorderedList, mapAndUnzip
+@docs toList, keys, values, mapToList, toUnorderedList, mapAndUnzip
 
 
 # Updating elements by key
@@ -191,15 +191,6 @@ mapToList func { items, order } =
                     |> Dict.get key
                     |> Maybe.map (func key)
             )
-
-
-{-| Forget about the custom order and do a Dict.map
--}
-unorderedMap : (comparable -> a -> b) -> KeyedList comparable a -> KeyedList comparable b
-unorderedMap func { items, order } =
-    { items = Dict.map func items
-    , order = order
-    }
 
 
 {-| Map over an AutoIncList, splitting off a seconary list of each second tuple element
