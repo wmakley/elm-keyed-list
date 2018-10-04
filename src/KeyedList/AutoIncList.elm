@@ -190,8 +190,7 @@ calculateNextUID { list } =
     (List.maximum (KeyedList.keys list) |> Maybe.withDefault 0) + 1
 
 
-{-| Add a single item to the end of the list. Deliberately
-not named the same as List.append, because it works differently.
+{-| Add a single item to the end of the list.
 -}
 append : a -> AutoIncList a -> ( AutoIncList a, UID )
 append item ({ list } as autoIncList) =
